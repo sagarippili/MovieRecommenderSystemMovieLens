@@ -1,0 +1,257 @@
+####################################################### IBCF and UBCF #############################################################
+library(Matrix)
+library(knitr)
+library(RecommenderLab)
+#Importing dataset and converting into matrix
+movies = read.csv("movies.csv",header = T,sep = ",")
+ratings = read.csv("Ratings.csv",header = T,sep = ",")
+r<-ratings
+r <- as(ratings, "realRatingMatrix")
+ratings_movie <- r[rowCounts(r) > 30, colCounts(r) > 100]
+ratings_movie1 <- ratings_movie[rowCounts(ratings_movie) > 30,]
+evaluation_scheme <- evaluationScheme(ratings_movie1, method="cross-validation", k=5, given=3, goodRating=5)
+# create training, test indices at 80/20
+which_train <- sample(x = c(TRUE, FALSE), size = nrow(ratings_movie1), replace = TRUE, prob = c(0.8, 0.2))
+# create the training and the test data sets
+recc_data_train <- ratings_movie1[which_train, ]
+recc_data_test <- ratings_movie1[!which_train, ]
+# Build recommender IBCF - cosine:
+recc_model <- Recommender(data = recc_data_train, method = "IBCF", parameter = list(k = 30))
+# We have now created a IBCF Recommender Model
+model_details <- getModel(recc_model)
+# We will define n_recommended that defines the number of items to recommend to each user and with the predict function, create prediction(recommendations) for the test set.
+recc_predicted <- predict(object = recc_model, newdata = recc_data_test, n = 5)
+# Evauating predictin and top 5 recommended movies
+eval_prediction <- predict(object = recc_model, newdata = getData(evaluation_scheme, "known"), n = 5, type = "ratings")
+Top_List = as(eval_prediction, "list")
+Top_List=data.frame(Top_List)
+colnames(Top_df_ibcf)="movieId"
+Top_5_df_ibcf$movieId=as.numeric(levels(Top_5_df_ibcf$movieId))
+names=merge(Top_5_df_ibcf, movies, by="movieId")
+names
+#Evauating accuracy
+eval_accuracy <- calcPredictionAccuracy(x = eval_prediction, data = getData(evaluation_scheme, "unknown"), byUser = TRUE)
+kable(head(eval_accuracy), caption="Sample User Prediction Accuracy, IBCF")
+
+#Buid recommender UBCF
+recc_model2 <- Recommender(data = recc_data_train, method = "UBCF")
+# A UBCF recommender has now been created
+model2_details <- getModel(recc_model2)
+#We will define n_recommended that defines the number of items to recommend to each user and with the predict function, create prediction(recommendations) for the test set.
+recc2_predicted <- predict(object = recc_model2, newdata = recc_data_test, n = 5)
+recc2_predicted@items[[10]]
+#Evauating predictin and top 5 recommended movies
+eval_prediction2 <- predict(object = recc_model2, newdata = getData(evaluation_scheme, "known"), n = 5, type = "ratings")
+Top_5_List = as(eval_prediction2, "list")
+Top_5_df=data.frame(Top_5_List)
+colnames(Top_5_df)="movieId"
+Top_5_df$movieId=as.numeric(levels(Top_5_df$movieId))
+names=merge(Top_5_df, movies, by="movieId")
+names
+eval_accuracy <- calcPredictionAccuracy(x = eval_prediction2, data = getData(evaluation_scheme, "unknown"), byUser = TRUE)
+kable(head(eval_accuracy), caption="Sample User Prediction Accuracy, UBCF")
+#Plotting Graphs
+results <- evaluate(x = evaluation_scheme, method = "IBCF", n = seq(10, 100, 10))
+plot(results, annotate = TRUE, main = "ROC curve")
+plot(results, "prec/rec", annotate = TRUE, main = "Precision-Recall")
+models_to_evaluate <- list(
+  IBCF_cos = list(name = "IBCF", param = list(method = "cosine")),
+  UBCF_cos = list(name = "UBCF", param = list(method = "cosine")))
+list_results <- evaluate(x = evaluation_scheme, method = models_to_evaluate, n = n_recommendations)
+plot(list_results, "prec/rec", annotate = 1, legend = "topright", ylim = c(0,0.4))
+title("Precision-recall")
+
+############################################################### CONTENT BASED ###################################################################
+
+#Loading dataset
+movies = read.csv("movies.csv",header=T,sep=",")
+ratings = read.csv("ratings.csv",header = T,sep=",")
+genres <- as.data.frame(movies$genres, stringsAsFactors=FALSE)
+library(data.table)
+genres2 <- as.data.frame(tstrsplit(genres[,1], '[|]', type.convert=TRUE), stringsAsFactors=FALSE)
+colnames(genres2) <- c(1:7)
+View(genres2)
+genre_list <- c("Action", "Adventure", "Animation", "Children", "Comedy", "Crime","Documentary", "Drama", "Fantasy","Film-Noir", "Horror", "Musical", "Mystery","Romance","Sci-Fi", "Thriller", "War", "Western")
+genre_matrix <- matrix(0,8571,18)
+genre_matrix[1,] <- genre_list  #set first row to genre list
+colnames(genre_matrix) <- genre_list #set column names to genre list
+
+#iterate through matrix
+for (i in 1:ncol(genres2)) {
+  for (c in 1:nrow(genres2)) {
+    genmat_col = which(genre_matrix[1,] == genres2[i,c])
+    genre_matrix[i+1,genmat_col] <- 1
+  }
+}
+
+#convert into dataframe
+genre_matrix2 <- as.data.frame(genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (c in 1:ncol(genre_matrix2)) {
+  genre_matrix2[,c] <- as.integer(genre_matrix2[,c])
+} #convert from characters to integers
+
+genre_matrix2 <- as.data.frame(genre_matrix[-1,], stringsAsFactors=FALSE) 
+for (c in 1:ncol(genre_matrix2)) {
+  genre_matrix2[,c] <- as.integer(genre_matrix2[,c])
+} 
+
+View(genre_matrix2)
+nrow(genre_matrix2) #8570 unique movies
+ncol(genre_matrix2) #18 unique genres
+
+
+binaryratings <- ratings
+for (i in 1:nrow(binaryratings)){
+  if (binaryratings[i,3] > 3){
+    binaryratings[i,3] <- 1
+  }
+  else{
+    binaryratings[i,3] <- -1
+  }
+}
+
+binaryratings2 <- dcast(binaryratings, movieId~userId, value.var = "rating", na.rm=FALSE)
+for (i in 1:ncol(binaryratings2)){
+  binaryratings2[which(is.na(binaryratings2[,i]) == TRUE),i] <- 0
+}
+binaryratings2 = binaryratings2[,-1] #remove movieIds col. Rows are movieIds, cols are userIds
+binaryratingsMat<-as(binaryratings2,"realRatingMatrix")
+#Remove rows that are not rated from movies dataset
+movieIds <- length(unique(movies$movieId)) #8570
+ratingmovieIds <- length(unique(ratings$movieId)) #8552
+movies2 <- movies[-which((movieIds %in% ratingmovieIds) == FALSE),]
+rownames(movies2) <- NULL
+#Remove rows that are not rated from genre_matrix2
+genre_matrix3 <- genre_matrix2[-which((movieIds %in% ratingmovieIds) == FALSE),]
+rownames(genre_matrix3) <- NULL
+#Calculate dot product for User Profiles
+result = matrix(0,18,706)
+for (c in 1:ncol(binaryratings2)){
+  for (i in 1:ncol(genre_matrix3)){
+    result[i,c] <- sum((genre_matrix3[,i]) * (binaryratings2[,c]))
+  }
+}
+
+#Convert to Binary scale
+for (i in 1:nrow(result)){
+  if (result[i] < 0){
+    result[i] <- 0
+  }
+  else {
+    result[i] <- 1
+  }
+}
+result2 <- result[5,] #First user's profile
+sim_mat <- rbind.data.frame(result2, genre_matrix3)
+sim_mat <- data.frame(lapply(sim_mat,function(x){as.integer(x)})) #convert data to type integer
+
+#Calculate Jaccard distance between user profile and all movies
+library(proxy)
+sim_results <- dist(sim_mat, method = "Jaccard")
+sim_results <- as.data.frame(as.matrix(sim_results[1:8552]))
+rows <- which(sim_results == min(sim_results))
+#Recommended movies
+View(movies[rows,])
+
+############################################################## MATRIX FACTORIZATION ####################################################
+data = read.csv("ratings.csv",sep=",")
+head(data1)
+data1 = data
+data1 <- subset(data1, select = -c(4))
+library(recosystem)
+set.seed(123)
+str(gdata)
+gdata$userId = as.numeric(gdata$userId)
+gdata$movieId = as.numeric(gdata$movieId)
+set.seed(123)
+in_train <- rep(TRUE, nrow(data1))
+in_train[sample(1:nrow(data1), size = round(0.2 * length(unique(data1$userId)), 0) * 5)] <- FALSE
+ratings_train <- data1[(in_train),]
+head(ratings_test)
+ratings_test <- gdata[(!in_train),]
+write.table(ratings_train, file = "trainset.txt", sep = " ", row.names = FALSE, col.names = FALSE)
+write.table(ratings_test, file = "testset.txt", sep = " ", row.names = FALSE, col.names = FALSE)
+library(recosystem)
+r = Reco()
+r$train("trainset.txt", opts=c(opts$min, nthread=1,niter=20))
+pred_rvec = r$predict("testset.txt",out_memory())
+head(pred_rvec,5)
+outfile = tempfile()
+r$predict("testset.txt", outfile)
+error_value <- read.table("testset.txt", header = FALSE, sep = " ")$V3
+error_pred <- scan(outfile)
+rmse_mf <- sqrt(mean((error_value-error_pred) ^ 2))
+rmse_mf
+len = length(unique(gdata$userId))
+len
+############################################################# SPARSE LINEAR METHOD #####################################################
+#Install and set the required libraries for data matrix and model building
+library(caret)
+library(reshape2)
+library(recommenderlab)
+ratings <- read.csv("ratings.csv")
+movies <- read.csv("movies.csv")
+library(Matrix)
+#Create a 2D rating matrix that has users to the rows and movieid to the columns with ratings as values in the space
+ratingmat <- dcast(ratings, userId~movieId, value.var = "rating", na.rm=TRUE)
+ratingmat <- as.matrix(ratingmat[,-1])
+ratingmat <- as(ratingmat, "sparseMatrix")
+ratingmat <- Matrix(ratingmat,sparse=TRUE)
+#Sparse matrix do not accept NAs and hence have to be removed by replacing with 0s
+library(dplyr)
+ratingmat[is.na(ratingmat)] <- 0
+#Set the slimrec library to that includes the functionalities to build a Sparse Linear Method recommender system
+library(slimrec)
+slimrec_model <- slim(mat=ratingmat, alpha = 0.5, nlambda = 100, nonNegCoeff = TRUE, directory = "C:/Users/sagar", coeffMat = TRUE, returnMat = TRUE, computeRMSE = TRUE, nproc = 1L, progress = TRUE, check = TRUE, cleanup = FALSE)
+str(slimrec_model)
+#Make some predictions on the model built
+predMat <- slimrec_model[["ratingMat"]] != 0
+sum(predMat)/((dim(predMat)[1])*(dim(predMat)[2]))
+library(dplyr)
+#Create a list that contains the top 5 columns of user at row 10 using the top_cols function
+Top_5_List <- top_cols(slimrec_model[["ratingMat"]], row=10,k=5)
+Top_5_df=data.frame(Top_5_List)
+colnames(Top_5_df)="movieId"
+Top_5_df$movieId=as.numeric(levels(Top_5_df$movieId))
+class(Top_5_df$movieId)
+#Merge the movies data on movieId to name the top 5 recommendations
+names=left_join(Top_5_df, movies, by="movieId")
+names
+
+########################################################## CONTEXT AWARE IBCF AND UBCF ######################################################
+data_new = read.csv("book1.csv",header = T,sep = ",")
+head(data_new)
+str(data_new)
+library(recommenderlab)
+d<-data_new
+d <- as(data_new, "realRatingMatrix")
+ratings_movie <- d[rowCounts(d) > 30, colCounts(d) > 100]
+ratings_movie1 <- ratings_movie[rowCounts(ratings_movie) > 30,]
+evaluation_scheme <- evaluationScheme(ratings_movie1, method="cross-validation", k=5, given=3, goodRating=5)
+which_train <- sample(x = c(TRUE, FALSE), size = nrow(ratings_movie1), replace = TRUE, prob = c(0.8, 0.2))
+recc_data_train <- ratings_movie1[which_train, ]
+recc_data_test <- ratings_movie1[!which_train, ]
+
+############ IBCF on Context data #############
+recc_model <- Recommender(data = recc_data_train, method = "IBCF", parameter = list(k = 30))
+model_details <- getModel(recc_model)
+recc_predicted <- predict(object = recc_model, newdata = recc_data_test, n = 5)
+recc_predicted@items[[10]]
+eval_prediction <- predict(object = recc_model, newdata = getData(evaluation_scheme, "known"), n = 5, type = "ratings")
+eval_accuracy <- calcPredictionAccuracy( x = eval_prediction, data = getData(evaluation_scheme, "unknown"), byUser = TRUE)
+kable(head(eval_accuracy), caption="Sample User Prediction Accuracy, IBCF")
+
+############ UBCF on Context data #############
+recc_model2 <- Recommender(data = recc_data_train, method = "UBCF")
+model2_details <- getModel(recc_model2)
+recc2_predicted <- predict(object = recc_model2, newdata = recc_data_test, n = 5)
+Top = as(recc2_predicted, "list")
+Top
+Top_df=data.frame(Top)
+colnames(Top_df)="movieId"
+Top_df$movieId=as.numeric(levels(Top_df$movieId))
+names=merge(Top_df, movies, by="movieId")
+recc2_predicted@items[[10]]
+eval_prediction2 <- predict(object = recc_model2, newdata = getData(evaluation_scheme, "known"), n = 5, type = "ratings")
+eval_accuracy <- calcPredictionAccuracy(x = eval_prediction2, data = getData(evaluation_scheme, "unknown"), byUser = TRUE)
+kable(head(eval_accuracy), caption="Sample User Prediction Accuracy, UBCF")
